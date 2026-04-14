@@ -42,8 +42,10 @@ app.use(
     origin(origin, callback) {
       if (process.env.NODE_ENV !== 'production') return callback(null, true);
       if (!origin) return callback(null, true);
+      // Fail-open in production if origin envs are missing to prevent broken deploys.
+      if (allowedOrigins.length === 0) return callback(null, true);
       if (allowedOrigins.includes(normalizeOrigin(origin))) return callback(null, true);
-      return callback(new Error('CORS blocked for origin.'));
+      return callback(null, false);
     },
     credentials: true,
   })
