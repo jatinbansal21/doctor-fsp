@@ -43,8 +43,8 @@ app.use(
       if (process.env.NODE_ENV !== 'production') return callback(null, true);
       if (!origin) return callback(null, true);
       // Fail-open in production if origin envs are missing to prevent broken deploys.
-      if (allowedOrigins.length === 0) return callback(null, true);
-      if (allowedOrigins.includes(normalizeOrigin(origin))) return callback(null, true);
+      if (allowedOrigins.length === 0) return callback(null, origin);
+      if (allowedOrigins.includes(normalizeOrigin(origin))) return callback(null, origin);
       return callback(null, false);
     },
     credentials: true,
