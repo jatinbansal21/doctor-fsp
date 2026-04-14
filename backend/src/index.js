@@ -15,11 +15,13 @@ const patientRoutes = require('./routes/patientRoutes');
 const uploadRoutes = require('./routes/uploadRoutes');
 const analyticsRoutes = require('./routes/analyticsRoutes');
 
+const normalizeOrigin = (value) => (value || '').trim().replace(/\/+$/, '');
+
 const parseAllowedOrigins = () => {
   const raw = process.env.FRONTEND_URLS || process.env.FRONTEND_URL || '';
   return raw
     .split(',')
-    .map((origin) => origin.trim())
+    .map(normalizeOrigin)
     .filter(Boolean);
 };
 
@@ -40,7 +42,7 @@ app.use(
     origin(origin, callback) {
       if (process.env.NODE_ENV !== 'production') return callback(null, true);
       if (!origin) return callback(null, true);
-      if (allowedOrigins.includes(origin)) return callback(null, true);
+      if (allowedOrigins.includes(normalizeOrigin(origin))) return callback(null, true);
       return callback(new Error('CORS blocked for origin.'));
     },
     credentials: true,
