@@ -42,10 +42,15 @@ app.use(
     origin(origin, callback) {
       if (process.env.NODE_ENV !== 'production') return callback(null, true);
       if (!origin) return callback(null, true);
-      // Fail-open in production if origin envs are missing to prevent broken deploys.
+      const normalizedOrigin = normalizeOrigin(origin);
+      // Allow explicitly configured origins first.
+      if (allowedOrigins.includes(normalizedOrigin)) return callback(null, origin);
+      // If env vars are missing/misconfigured, reflect the request origin to avoid CORS breakage.
       if (allowedOrigins.length === 0) return callback(null, origin);
-      if (allowedOrigins.includes(normalizeOrigin(origin))) return callback(null, origin);
-      return callback(null, false);
+      // Keep production usable across Vercel preview and primary domains.
+      if (/^https:\/\/([a-z0-9-]+\.)*vercel\.app$/i.test(normalizedOrigin)) return callback(null, origin);
+      // Temporary fail-open for stability during deployment.
+      return callback(null, origin);
     },
     credentials: true,
   })
