@@ -108,8 +108,8 @@ export default function DashboardPage() {
           <p style={{ color: 'var(--text-secondary)', marginBottom: '1.5rem' }}>
             View and manage your patient profile
           </p>
-          <Link to="/patients" className="btn btn-primary">
-            View My Profile
+          <Link to="/soc" className="btn btn-primary">
+            Open SOC Form
           </Link>
         </div>
       ) : loading ? (

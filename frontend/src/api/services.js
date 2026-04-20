@@ -3,6 +3,7 @@ import api from './axiosInstance';
 export const authAPI = {
   register: (data) => api.post('/api/auth/register', data),
   login: (data) => api.post('/api/auth/login', data),
+  googleLogin: (data) => api.post('/api/auth/google', data),
   logout: () => api.post('/api/auth/logout'),
   getMe: () => api.get('/api/auth/me'),
   refresh: (refreshToken) => api.post('/api/auth/refresh', { refreshToken }),
@@ -11,6 +12,7 @@ export const authAPI = {
 export const patientAPI = {
   getAll: (params) => api.get('/api/patients', { params }),
   getOne: (id) => api.get(`/api/patients/${id}`),
+  getMySoc: () => api.get('/api/patients/my-soc'),
   create: (data) => api.post('/api/patients', data),
   update: (id, data) => api.put(`/api/patients/${id}`, data),
   delete: (id) => api.delete(`/api/patients/${id}`),

@@ -11,6 +11,11 @@ exports.getStats = async (req, res, next) => {
 
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
+    const doctorScope = {
+      isDeleted: false,
+      $or: [{ createdBy: req.user._id }, { isSelfReported: true }],
+    };
+
     const [
       totalPatients,
       newThisWeek,
@@ -19,22 +24,22 @@ exports.getStats = async (req, res, next) => {
       bloodGroupStats,
       admitTrend,
     ] = await Promise.all([
-      Patient.countDocuments({ isDeleted: false }),
-      Patient.countDocuments({ isDeleted: false, createdAt: { $gte: startOfWeek } }),
-      Patient.countDocuments({ isDeleted: false, createdAt: { $gte: startOfMonth } }),
+      Patient.countDocuments(doctorScope),
+      Patient.countDocuments({ ...doctorScope, createdAt: { $gte: startOfWeek } }),
+      Patient.countDocuments({ ...doctorScope, createdAt: { $gte: startOfMonth } }),
       Patient.aggregate([
-        { $match: { isDeleted: false, gender: { $ne: null } } },
+        { $match: { ...doctorScope, gender: { $ne: null } } },
         { $group: { _id: '$gender', count: { $sum: 1 } } },
       ]),
       Patient.aggregate([
-        { $match: { isDeleted: false, bloodGroup: { $ne: null } } },
+        { $match: { ...doctorScope, bloodGroup: { $ne: null } } },
         { $group: { _id: '$bloodGroup', count: { $sum: 1 } } },
       ]),
       // Last 7 days admit trend
       Patient.aggregate([
         {
           $match: {
-            isDeleted: false,
+            ...doctorScope,
             createdAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) },
           },
         },

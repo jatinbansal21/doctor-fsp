@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
-import { loginUser, clearError } from '../features/auth/authSlice';
+import { loginUser, googleLoginUser, clearError } from '../features/auth/authSlice';
 import { Activity, Mail, Lock, Eye, EyeOff, ArrowRight } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -12,6 +12,8 @@ export default function LoginPage() {
 
   const [form, setForm] = useState({ email: '', password: '' });
   const [showPassword, setShowPassword] = useState(false);
+  const [googleRole, setGoogleRole] = useState('patient');
+  const [googleLoading, setGoogleLoading] = useState(false);
   const [darkMode] = useState(() => localStorage.getItem('darkMode') !== 'false');
 
   useEffect(() => {
@@ -23,6 +25,17 @@ export default function LoginPage() {
     if (error) { toast.error(error); dispatch(clearError()); }
   }, [error, dispatch]);
 
+  useEffect(() => {
+    const scriptId = 'google-gsi-script';
+    if (document.getElementById(scriptId)) return;
+    const script = document.createElement('script');
+    script.id = scriptId;
+    script.src = 'https://accounts.google.com/gsi/client';
+    script.async = true;
+    script.defer = true;
+    document.body.appendChild(script);
+  }, []);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     const result = await dispatch(loginUser(form));
@@ -30,6 +43,35 @@ export default function LoginPage() {
       toast.success('Welcome back!');
       navigate('/dashboard');
     }
+  };
+
+  const handleGoogleLogin = async () => {
+    const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+    if (!clientId) {
+      toast.error('Google login is not configured. Set VITE_GOOGLE_CLIENT_ID.');
+      return;
+    }
+    if (!window.google?.accounts?.id) {
+      toast.error('Google Sign-In script not loaded. Please retry.');
+      return;
+    }
+
+    setGoogleLoading(true);
+    window.google.accounts.id.initialize({
+      client_id: clientId,
+      callback: async (response) => {
+        try {
+          const result = await dispatch(googleLoginUser({ idToken: response.credential, role: googleRole }));
+          if (!result.error) {
+            toast.success('Signed in with Google!');
+            navigate(result.payload?.user?.role === 'patient' ? '/soc' : '/dashboard');
+          }
+        } finally {
+          setGoogleLoading(false);
+        }
+      },
+    });
+    window.google.accounts.id.prompt();
   };
 
   return (
@@ -154,6 +196,25 @@ export default function LoginPage() {
               )}
             </button>
           </form>
+
+          <div style={{ marginTop: '0.9rem', display: 'grid', gap: '0.6rem' }}>
+            <select
+              className="form-input"
+              value={googleRole}
+              onChange={(e) => setGoogleRole(e.target.value)}
+            >
+              <option value="patient">Google sign-in as Patient</option>
+              <option value="doctor">Google sign-in as Doctor</option>
+            </select>
+            <button
+              type="button"
+              className="btn btn-ghost btn-lg"
+              disabled={googleLoading}
+              onClick={handleGoogleLogin}
+            >
+              {googleLoading ? 'Opening Google...' : 'Continue with Google'}
+            </button>
+          </div>
 
           <div className="divider" />
 

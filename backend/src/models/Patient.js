@@ -77,6 +77,12 @@ const patientSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
       default: null,
+      index: true,
+    },
+    isSelfReported: {
+      type: Boolean,
+      default: false,
+      index: true,
     },
   },
   { timestamps: true }
@@ -87,5 +93,7 @@ patientSchema.index({ name: 'text', contactNumber: 'text', email: 'text' });
 
 // Compound index for common queries
 patientSchema.index({ isDeleted: 1, createdAt: -1 });
+patientSchema.index({ createdBy: 1, isDeleted: 1 });
+patientSchema.index({ patientUserId: 1, isDeleted: 1 });
 
 module.exports = mongoose.model('Patient', patientSchema);

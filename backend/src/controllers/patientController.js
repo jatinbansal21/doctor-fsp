@@ -21,12 +21,37 @@ const getDiff = (before, after) => {
 };
 
 // DOCTOR-ONLY fields (patients cannot write these)
-const DOCTOR_ONLY_FIELDS = ['payorType','socialHistory','medicalHistory','reference','remarks','review','fathersEducationProof','doctorAssigned','isDeleted'];
+const DOCTOR_ONLY_FIELDS = ['payorType', 'reference', 'remarks', 'review', 'fathersEducationProof', 'doctorAssigned', 'isDeleted', 'deletedAt', 'createdBy'];
+const SOC_ALLOWED_FIELDS = [
+  'name', 'contactNumber', 'email', 'age', 'gender', 'bloodGroup', 'address', 'admitDate',
+  'emergencyContact', 'emergencyContactName', 'allergies', 'currentMedications',
+  'medicalHistory', 'socialHistory',
+];
+
+const canDoctorAccessPatient = (userId, patient) =>
+  String(patient.createdBy) === String(userId) || patient.isSelfReported;
+
+const toDoctorScope = (doctorId, query = {}) => ({
+  ...query,
+  $or: [{ createdBy: doctorId }, { isSelfReported: true }],
+});
+
+const pickFields = (source, allowed) => {
+  const result = {};
+  for (const key of allowed) {
+    if (Object.prototype.hasOwnProperty.call(source, key)) result[key] = source[key];
+  }
+  return result;
+};
 
 // @desc    Get all patients (paginated, filterable, searchable)
 // @route   GET /api/patients
 exports.getPatients = async (req, res, next) => {
   try {
+    if (req.user.role === 'patient') {
+      return res.status(403).json({ success: false, message: 'Patients are not allowed to list records.' });
+    }
+
     const {
       search, gender, ageMin, ageMax, admitFrom, admitTo,
       page = 1, limit = 10, sort = '-createdAt', showDeleted
@@ -39,11 +64,6 @@ exports.getPatients = async (req, res, next) => {
       query.isDeleted = true;
     } else {
       query.isDeleted = false;
-    }
-
-    // Patient role can only see their own record
-    if (req.user.role === 'patient') {
-      query.patientUserId = req.user._id;
     }
 
     if (search) {
@@ -67,8 +87,9 @@ exports.getPatients = async (req, res, next) => {
     }
 
     const skip = (Number(page) - 1) * Number(limit);
-    const total = await Patient.countDocuments(query);
-    const patients = await Patient.find(query)
+    const scopedQuery = toDoctorScope(req.user._id, query);
+    const total = await Patient.countDocuments(scopedQuery);
+    const patients = await Patient.find(scopedQuery)
       .populate('doctorAssigned', 'name email')
       .populate('createdBy', 'name email')
       .sort(sort)
@@ -107,8 +128,31 @@ exports.getPatient = async (req, res, next) => {
     if (req.user.role === 'patient' && String(patient.patientUserId) !== String(req.user._id)) {
       return res.status(403).json({ success: false, message: 'Access denied.' });
     }
+    if (req.user.role === 'doctor' && !canDoctorAccessPatient(req.user._id, patient)) {
+      return res.status(403).json({ success: false, message: 'You can only access your own patients.' });
+    }
 
     res.json({ success: true, data: patient });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Get current patient user's SOC record
+// @route   GET /api/patients/my-soc
+exports.getMySoc = async (req, res, next) => {
+  try {
+    if (req.user.role !== 'patient') {
+      return res.status(403).json({ success: false, message: 'Access denied.' });
+    }
+
+    const soc = await Patient.findOne({
+      patientUserId: req.user._id,
+      isSelfReported: true,
+      isDeleted: false,
+    }).populate('createdBy', 'name email');
+
+    res.json({ success: true, data: soc || null });
   } catch (error) {
     next(error);
   }
@@ -123,12 +167,27 @@ exports.createPatient = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Name and contact number are required.' });
     }
 
-    const patientData = { ...req.body, createdBy: req.user._id };
+    let patientData = { ...req.body, createdBy: req.user._id, isSelfReported: false };
 
     // Patients cannot set doctor-only fields
     if (req.user.role === 'patient') {
-      DOCTOR_ONLY_FIELDS.forEach((f) => delete patientData[f]);
+      const existingSoc = await Patient.findOne({
+        patientUserId: req.user._id,
+        isSelfReported: true,
+        isDeleted: false,
+      });
+      if (existingSoc) {
+        return res.status(409).json({ success: false, message: 'SOC profile already exists. Please update it.' });
+      }
+      patientData = pickFields(req.body, SOC_ALLOWED_FIELDS);
       patientData.patientUserId = req.user._id;
+      patientData.createdBy = null;
+      patientData.isSelfReported = true;
+      patientData.doctorAssigned = null;
+    }
+
+    if (req.user.role === 'doctor' && !patientData.doctorAssigned) {
+      patientData.doctorAssigned = req.user._id;
     }
 
     const patient = await Patient.create(patientData);
@@ -160,12 +219,24 @@ exports.updatePatient = async (req, res, next) => {
     if (req.user.role === 'patient' && String(patient.patientUserId) !== String(req.user._id)) {
       return res.status(403).json({ success: false, message: 'Access denied.' });
     }
+    if (req.user.role === 'patient' && !patient.isSelfReported) {
+      return res.status(403).json({ success: false, message: 'Patients can only update self-reported SOC data.' });
+    }
+    if (req.user.role === 'doctor' && !canDoctorAccessPatient(req.user._id, patient)) {
+      return res.status(403).json({ success: false, message: 'You can only update your own patients.' });
+    }
 
-    const updateData = { ...req.body };
+    let updateData = { ...req.body };
 
     // Patients cannot update doctor-only fields
     if (req.user.role === 'patient') {
-      DOCTOR_ONLY_FIELDS.forEach((f) => delete updateData[f]);
+      updateData = pickFields(req.body, SOC_ALLOWED_FIELDS);
+      updateData.isSelfReported = true;
+      updateData.patientUserId = req.user._id;
+      updateData.createdBy = null;
+    } else {
+      delete updateData.patientUserId;
+      delete updateData.isSelfReported;
     }
 
     const before = patient.toObject();
@@ -198,6 +269,10 @@ exports.deletePatient = async (req, res, next) => {
       return res.status(404).json({ success: false, message: 'Patient not found.' });
     }
 
+    if (!canDoctorAccessPatient(req.user._id, patient)) {
+      return res.status(403).json({ success: false, message: 'You can only delete your own patients.' });
+    }
+
     patient.isDeleted = true;
     patient.deletedAt = new Date();
     await patient.save();
@@ -226,6 +301,10 @@ exports.restorePatient = async (req, res, next) => {
       return res.status(404).json({ success: false, message: 'Archived patient not found.' });
     }
 
+    if (!canDoctorAccessPatient(req.user._id, patient)) {
+      return res.status(403).json({ success: false, message: 'You can only restore your own patients.' });
+    }
+
     patient.isDeleted = false;
     patient.deletedAt = null;
     await patient.save();
@@ -249,6 +328,14 @@ exports.restorePatient = async (req, res, next) => {
 // @route   GET /api/patients/:id/history
 exports.getPatientHistory = async (req, res, next) => {
   try {
+    const patient = await Patient.findById(req.params.id);
+    if (!patient) {
+      return res.status(404).json({ success: false, message: 'Patient not found.' });
+    }
+    if (!canDoctorAccessPatient(req.user._id, patient)) {
+      return res.status(403).json({ success: false, message: 'Access denied.' });
+    }
+
     const logs = await AuditLog.find({ patientId: req.params.id })
       .populate('changedBy', 'name email role')
       .sort('-createdAt')

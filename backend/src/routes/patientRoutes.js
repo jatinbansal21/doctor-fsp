@@ -2,9 +2,9 @@ const express = require('express');
 const router = express.Router();
 const {
   getPatients, getPatient, createPatient, updatePatient,
-  deletePatient, restorePatient, getPatientHistory,
+  deletePatient, restorePatient, getPatientHistory, getMySoc,
 } = require('../controllers/patientController');
-const { protect, authorize } = require('../middleware/auth');
+const { protect, authorize, isDoctor, isPatient } = require('../middleware/auth');
 
 // All routes require authentication
 router.use(protect);
@@ -16,13 +16,14 @@ router.use(protect);
  *   description: Patient management (doctor only for write operations)
  */
 
-router.get('/', getPatients);
+router.get('/', isDoctor, getPatients);
 router.post('/', createPatient);
+router.get('/my-soc', isPatient, getMySoc);
 
 router.get('/:id', getPatient);
 router.put('/:id', updatePatient);
-router.delete('/:id', authorize('doctor'), deletePatient);
-router.patch('/:id/restore', authorize('doctor'), restorePatient);
-router.get('/:id/history', authorize('doctor'), getPatientHistory);
+router.delete('/:id', isDoctor, deletePatient);
+router.patch('/:id/restore', isDoctor, restorePatient);
+router.get('/:id/history', isDoctor, getPatientHistory);
 
 module.exports = router;

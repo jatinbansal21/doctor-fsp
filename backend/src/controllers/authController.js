@@ -1,5 +1,8 @@
 const jwt = require('jsonwebtoken');
+const { OAuth2Client } = require('google-auth-library');
 const User = require('../models/User');
+
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 const generateTokens = (userId) => {
   const accessToken = jwt.sign({ id: userId }, process.env.JWT_SECRET, {
@@ -9,6 +12,13 @@ const generateTokens = (userId) => {
     expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d',
   });
   return { accessToken, refreshToken };
+};
+
+const toAuthResponse = async (user) => {
+  const { accessToken, refreshToken } = generateTokens(user._id);
+  user.refreshToken = refreshToken;
+  await user.save({ validateBeforeSave: false });
+  return { user, accessToken, refreshToken };
 };
 
 // @desc    Register user
@@ -29,13 +39,8 @@ exports.register = async (req, res, next) => {
     const allowedRoles = ['doctor', 'patient'];
     const userRole = allowedRoles.includes(role) ? role : 'patient';
 
-    const user = await User.create({ name, email, password, role: userRole });
-
-    const { accessToken, refreshToken } = generateTokens(user._id);
-
-    // Save refresh token
-    user.refreshToken = refreshToken;
-    await user.save({ validateBeforeSave: false });
+    const user = await User.create({ name, email, password, role: userRole, authProvider: 'local' });
+    const { accessToken, refreshToken } = await toAuthResponse(user);
 
     res.status(201).json({
       success: true,
@@ -71,13 +76,65 @@ exports.login = async (req, res, next) => {
       return res.status(403).json({ success: false, message: 'Account is deactivated.' });
     }
 
-    const { accessToken, refreshToken } = generateTokens(user._id);
-    user.refreshToken = refreshToken;
-    await user.save({ validateBeforeSave: false });
+    const { accessToken, refreshToken } = await toAuthResponse(user);
 
     res.json({
       success: true,
       message: 'Login successful.',
+      data: { user, accessToken, refreshToken },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Login/Register with Google
+// @route   POST /api/auth/google
+exports.googleLogin = async (req, res, next) => {
+  try {
+    const { idToken, role } = req.body;
+    if (!idToken) {
+      return res.status(400).json({ success: false, message: 'Google token is required.' });
+    }
+
+    const ticket = await googleClient.verifyIdToken({
+      idToken,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+    const payload = ticket.getPayload();
+    if (!payload?.email) {
+      return res.status(400).json({ success: false, message: 'Unable to verify Google account.' });
+    }
+
+    const normalizedEmail = payload.email.toLowerCase().trim();
+    let user = await User.findOne({
+      $or: [{ email: normalizedEmail }, { googleId: payload.sub }],
+    }).select('+refreshToken');
+
+    if (!user) {
+      const allowedRoles = ['doctor', 'patient'];
+      const userRole = allowedRoles.includes(role) ? role : 'patient';
+      user = await User.create({
+        name: payload.name || normalizedEmail.split('@')[0],
+        email: normalizedEmail,
+        googleId: payload.sub,
+        authProvider: 'google',
+        role: userRole,
+      });
+      user = await User.findById(user._id).select('+refreshToken');
+    } else if (!user.googleId) {
+      user.googleId = payload.sub;
+      user.authProvider = 'google';
+    }
+
+    if (!user.isActive) {
+      return res.status(403).json({ success: false, message: 'Account is deactivated.' });
+    }
+
+    const { accessToken, refreshToken } = await toAuthResponse(user);
+    res.json({
+      success: true,
+      message: 'Google login successful.',
       data: { user, accessToken, refreshToken },
     });
   } catch (error) {

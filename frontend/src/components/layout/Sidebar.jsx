@@ -1,16 +1,17 @@
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import {
-  LayoutDashboard, Users, Archive, User, LogOut,
+  LayoutDashboard, Users, Archive, User, LogOut, ClipboardPen,
   ChevronLeft, ChevronRight, Activity, Moon, Sun
 } from 'lucide-react';
 import { logoutUser } from '../../features/auth/authSlice';
 import toast from 'react-hot-toast';
 
 const navItems = [
-  { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/patients', icon: Users, label: 'Patients', doctorOnly: false },
+  { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', doctorOnly: true },
+  { to: '/patients', icon: Users, label: 'Patients', doctorOnly: true },
   { to: '/archived', icon: Archive, label: 'Archived', doctorOnly: true },
+  { to: '/soc', icon: ClipboardPen, label: 'My SOC Form', patientOnly: true },
   { to: '/profile', icon: User, label: 'My Profile' },
 ];
 
@@ -137,6 +138,7 @@ export default function Sidebar({ collapsed, onToggle, darkMode, onToggleDark })
       <nav style={{ flex: 1, padding: '0.75rem 0', overflowY: 'auto' }}>
         {navItems.map((item) => {
           if (item.doctorOnly && user?.role !== 'doctor') return null;
+          if (item.patientOnly && user?.role !== 'patient') return null;
           return (
             <NavLink
               key={item.to}

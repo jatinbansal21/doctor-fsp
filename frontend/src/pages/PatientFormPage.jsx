@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { createPatient, updatePatient, fetchPatient } from '../features/patients/patientSlice';
+import { patientAPI } from '../api/services';
 import { ChevronLeft, Save, User } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -35,13 +36,16 @@ const SECTION_FIELDS = {
   ],
 };
 
-export default function PatientFormPage() {
+export default function PatientFormPage({ socOnly = false }) {
   const { id } = useParams();
   const isEdit = Boolean(id);
+  const isSocMode = socOnly || false;
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const { user } = useSelector((state) => state.auth);
   const { selectedPatient, isLoading } = useSelector((state) => state.patients);
+  const [socPatientId, setSocPatientId] = useState(null);
+  const [loadingSoc, setLoadingSoc] = useState(false);
 
   const [form, setForm] = useState({
     name: '', contactNumber: '', email: '', age: '', gender: '',
@@ -54,10 +58,33 @@ export default function PatientFormPage() {
   const [errors, setErrors] = useState({});
 
   useEffect(() => {
+    if (isSocMode && user?.role === 'patient') {
+      setLoadingSoc(true);
+      patientAPI.getMySoc()
+        .then((res) => {
+          const d = res.data?.data;
+          if (!d) return;
+          setSocPatientId(d._id);
+          setForm({
+            name: d.name || '', contactNumber: d.contactNumber || '', email: d.email || '',
+            age: d.age || '', gender: d.gender || '', bloodGroup: d.bloodGroup || '',
+            address: d.address || '',
+            admitDate: d.admitDate ? d.admitDate.slice(0, 10) : '',
+            emergencyContact: d.emergencyContact || '', emergencyContactName: d.emergencyContactName || '',
+            allergies: d.allergies || '', currentMedications: d.currentMedications || '',
+            medicalHistory: d.medicalHistory || '', socialHistory: d.socialHistory || '',
+            payorType: '', reference: '', remarks: '', review: '', fathersEducationProof: '',
+          });
+        })
+        .catch(() => {})
+        .finally(() => setLoadingSoc(false));
+      return;
+    }
     if (isEdit) dispatch(fetchPatient(id));
-  }, [id, isEdit, dispatch]);
+  }, [id, isEdit, isSocMode, dispatch, user]);
 
   useEffect(() => {
+    if (isSocMode && user?.role === 'patient') return;
     if (isEdit && selectedPatient) {
       const d = selectedPatient;
       setForm({
@@ -73,7 +100,7 @@ export default function PatientFormPage() {
         fathersEducationProof: d.fathersEducationProof || '',
       });
     }
-  }, [isEdit, selectedPatient]);
+  }, [isEdit, isSocMode, selectedPatient, user]);
 
   const validate = () => {
     const errs = {};
@@ -93,7 +120,24 @@ export default function PatientFormPage() {
     Object.keys(payload).forEach((k) => { if (payload[k] === '') delete payload[k]; });
 
     let res;
-    if (isEdit) {
+    if (isSocMode && user?.role === 'patient') {
+      if (socPatientId) {
+        try {
+          const response = await patientAPI.update(socPatientId, payload);
+          res = { payload: response.data?.data };
+        } catch (err) {
+          res = { error: true, payload: err.response?.data?.message || 'Failed to update SOC profile' };
+        }
+      } else {
+        try {
+          const response = await patientAPI.create(payload);
+          res = { payload: response.data?.data };
+          if (response.data?.data?._id) setSocPatientId(response.data.data._id);
+        } catch (err) {
+          res = { error: true, payload: err.response?.data?.message || 'Failed to create SOC profile' };
+        }
+      }
+    } else if (isEdit) {
       res = await dispatch(updatePatient({ id, data: payload }));
     } else {
       res = await dispatch(createPatient(payload));
@@ -101,12 +145,23 @@ export default function PatientFormPage() {
 
     setSaving(false);
     if (!res.error) {
-      toast.success(isEdit ? 'Patient updated!' : 'Patient created!');
-      navigate(isEdit ? `/patients/${id}` : '/patients');
+      const successMessage = isSocMode ? 'SOC details saved successfully!' : (isEdit ? 'Patient updated!' : 'Patient created!');
+      toast.success(successMessage);
+      if (!isSocMode) {
+        navigate(isEdit ? `/patients/${id}` : '/patients');
+      }
     } else {
       toast.error(res.payload || 'Something went wrong');
     }
   };
+
+  if (isSocMode && loadingSoc) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 280 }}>
+        <div className="spinner spinner-dark" style={{ width: 36, height: 36 }} />
+      </div>
+    );
+  }
 
   return (
     <div style={{ maxWidth: 800, margin: '0 auto' }}>
@@ -117,10 +172,12 @@ export default function PatientFormPage() {
         </button>
         <div>
           <h1 className="page-title" style={{ fontSize: '1.35rem' }}>
-            {isEdit ? 'Edit Patient' : 'Add New Patient'}
+            {isSocMode ? 'My SOC Details' : (isEdit ? 'Edit Patient' : 'Add New Patient')}
           </h1>
           <p className="page-subtitle">
-            {isEdit ? 'Update patient information' : 'Fill in the details to register a new patient'}
+            {isSocMode
+              ? 'Update your self-reported clinical and social information'
+              : (isEdit ? 'Update patient information' : 'Fill in the details to register a new patient')}
           </p>
         </div>
       </div>
@@ -200,7 +257,7 @@ export default function PatientFormPage() {
             {saving ? (
               <><div className="spinner" /> Saving...</>
             ) : (
-              <><Save size={15} /> {isEdit ? 'Update Patient' : 'Create Patient'}</>
+              <><Save size={15} /> {isSocMode ? 'Save SOC Details' : (isEdit ? 'Update Patient' : 'Create Patient')}</>
             )}
           </button>
         </div>

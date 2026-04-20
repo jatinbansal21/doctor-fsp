@@ -77,6 +77,7 @@ exports.uploadExcel = async (req, res, next) => {
 
       mapped.createdBy = req.user._id;
       mapped.doctorAssigned = req.user._id;
+      mapped.isSelfReported = false;
       toInsert.push(mapped);
     }
 
@@ -114,7 +115,10 @@ exports.exportExcel = async (req, res, next) => {
   try {
     const { search, gender, ageMin, ageMax, admitFrom, admitTo } = req.query;
 
-    const query = { isDeleted: false };
+    const query = {
+      isDeleted: false,
+      $or: [{ createdBy: req.user._id }, { isSelfReported: true }],
+    };
 
     if (search) {
       query.$or = [

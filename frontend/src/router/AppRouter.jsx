@@ -13,13 +13,15 @@ import ArchivedPatientsPage from '../pages/ArchivedPatientsPage';
 function ProtectedRoute({ children, role }) {
   const { user, accessToken } = useSelector((state) => state.auth);
   if (!accessToken) return <Navigate to="/login" replace />;
-  if (role && user && user.role !== role) return <Navigate to="/dashboard" replace />;
+  if (role && user && user.role !== role) {
+    return <Navigate to={user.role === 'patient' ? '/soc' : '/dashboard'} replace />;
+  }
   return children;
 }
 
 function PublicRoute({ children }) {
-  const { accessToken } = useSelector((state) => state.auth);
-  if (accessToken) return <Navigate to="/dashboard" replace />;
+  const { accessToken, user } = useSelector((state) => state.auth);
+  if (accessToken) return <Navigate to={user?.role === 'patient' ? '/soc' : '/dashboard'} replace />;
   return children;
 }
 
@@ -46,13 +48,14 @@ export default function AppRouter({ initialized }) {
         <Route path="/register" element={<PublicRoute><RegisterPage /></PublicRoute>} />
 
         <Route path="/" element={<ProtectedRoute><DoctorLayout /></ProtectedRoute>}>
-          <Route index element={<Navigate to="/dashboard" replace />} />
-          <Route path="dashboard" element={<DashboardPage />} />
-          <Route path="patients" element={<PatientsPage />} />
+          <Route index element={<Navigate to={accessToken ? '/dashboard' : '/login'} replace />} />
+          <Route path="dashboard" element={<ProtectedRoute role="doctor"><DashboardPage /></ProtectedRoute>} />
+          <Route path="patients" element={<ProtectedRoute role="doctor"><PatientsPage /></ProtectedRoute>} />
           <Route path="patients/new" element={<ProtectedRoute role="doctor"><PatientFormPage /></ProtectedRoute>} />
-          <Route path="patients/:id" element={<PatientDetailPage />} />
-          <Route path="patients/:id/edit" element={<PatientFormPage />} />
+          <Route path="patients/:id" element={<ProtectedRoute role="doctor"><PatientDetailPage /></ProtectedRoute>} />
+          <Route path="patients/:id/edit" element={<ProtectedRoute role="doctor"><PatientFormPage /></ProtectedRoute>} />
           <Route path="archived" element={<ProtectedRoute role="doctor"><ArchivedPatientsPage /></ProtectedRoute>} />
+          <Route path="soc" element={<ProtectedRoute role="patient"><PatientFormPage socOnly /></ProtectedRoute>} />
           <Route path="profile" element={<ProfilePage />} />
         </Route>
 

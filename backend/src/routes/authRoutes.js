@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { register, login, refreshToken, logout, getMe } = require('../controllers/authController');
+const { register, login, googleLogin, refreshToken, logout, getMe } = require('../controllers/authController');
 const { protect } = require('../middleware/auth');
 
 /**
@@ -55,6 +55,7 @@ router.post('/register', register);
  *         description: Login successful
  */
 router.post('/login', login);
+router.post('/google', googleLogin);
 router.post('/refresh', refreshToken);
 router.post('/logout', protect, logout);
 router.get('/me', protect, getMe);

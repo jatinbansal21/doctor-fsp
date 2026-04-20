@@ -41,4 +41,7 @@ const authorize = (...roles) => {
   };
 };
 
-module.exports = { protect, authorize };
+const isDoctor = authorize('doctor');
+const isPatient = authorize('patient');
+
+module.exports = { protect, authorize, isDoctor, isPatient };
